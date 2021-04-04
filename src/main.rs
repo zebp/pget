@@ -1,10 +1,11 @@
-mod download;
 mod context;
+mod download;
 mod error;
 
 use std::sync::Arc;
 
 use argh::FromArgs;
+use reqwest::ClientBuilder;
 use tokio::task::JoinHandle;
 
 use crate::context::Context;
@@ -18,6 +19,9 @@ struct Pget {
     /// how many links should be downloaded in parallel.
     #[argh(option, short = 'o')]
     output: Option<String>,
+    #[argh(option, short = 'u')]
+    /// how many links should be downloaded in parallel.
+    user_agent: Option<String>,
     #[argh(positional)]
     /// a list of all of the links to download.
     links: Option<String>,
@@ -26,7 +30,13 @@ struct Pget {
 #[tokio::main]
 async fn main() {
     let args = argh::from_env::<Pget>();
-    let ctx = Context::new(&args.output, &args.links).unwrap();
+
+    let client = ClientBuilder::new()
+        .user_agent(args.user_agent.unwrap_or_else(|| "pget".into()))
+        .build()
+        .unwrap();
+
+    let ctx = Context::new(client, &args.output, &args.links).unwrap();
     let ctx = Arc::new(ctx);
 
     let tasks: Vec<JoinHandle<()>> = std::iter::repeat_with(|| {
@@ -39,8 +49,8 @@ async fn main() {
                     None => return,
                 };
 
-                match download::download(link, path).await {
-                    Ok(_) => {},
+                match download::download(&ctx, link, path).await {
+                    Ok(_) => {}
                     Err(e) => {
                         dbg!(e);
                     }

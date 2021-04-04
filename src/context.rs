@@ -5,24 +5,29 @@ use std::{
     sync::Arc,
 };
 
-use reqwest::Url;
+use reqwest::{Client, Url};
 use tokio::sync::Mutex;
 
 #[derive(Clone)]
 pub struct Context {
+    /// A store of all of the links and the occurances of their names.
     link_store: Arc<Mutex<LinkStore>>,
     /// The directory where all files are stored.
     pub output_directory: PathBuf,
+    /// The configured http client used to make requests.
+    pub client: Client,
 }
 
 impl Context {
     /// Reads all the links from either the provided file or from stdin.
     pub fn new(
+        client: Client,
         output_directory: &Option<String>,
         links_file: &Option<String>,
     ) -> std::io::Result<Self> {
         let link_store = LinkStore::new(links_file)?;
         Ok(Self {
+            client,
             link_store: Arc::new(Mutex::new(link_store)),
             output_directory: output_directory
                 .as_ref()
