@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::Path;
 
 use futures::StreamExt;
 use reqwest::Url;
@@ -6,7 +6,7 @@ use tokio::{fs::File, io::AsyncWriteExt};
 
 use crate::{context::Context, error::Error};
 
-pub async fn download(ctx: &Context, link: Url, path: PathBuf) -> Result<(), Error> {
+pub async fn download(ctx: &Context, link: Url, path: &Path) -> Result<(), Error> {
     let mut file = File::create(path).await?;
     let mut stream = ctx.client.get(link).send().await?.bytes_stream();
 

@@ -49,9 +49,10 @@ async fn main() {
                     None => return,
                 };
 
-                match download::download(&ctx, link, path).await {
+                match download::download(&ctx, link, &path).await {
                     Ok(_) => {}
                     Err(e) => {
+                        tokio::fs::remove_file(path).await.unwrap();
                         dbg!(e);
                     }
                 }
