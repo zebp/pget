@@ -13,7 +13,7 @@ pub struct Context {
     /// create collisions so we keep track of the names and append the file's count to stop that.
     file_name_count_map: HashMap<String, usize>,
     /// The directory where all files are stored.
-    output_directory: PathBuf,
+    pub output_directory: PathBuf,
 }
 
 impl Context {
@@ -47,9 +47,13 @@ impl Context {
         })
     }
 
-    pub fn next(&mut self) -> Option<(String, Url)> {
+    pub fn next(&mut self) -> Option<(PathBuf, Url)> {
         self.links.pop()
-            .map(|url| (self.choose_name(&url), url))
+            .map(|url| {
+                let name = self.choose_name(&url);
+                let output_path = self.output_directory.join(name);
+                (output_path, url)
+            })
     }
 
     fn choose_name(&mut self, link: &Url) -> String {
