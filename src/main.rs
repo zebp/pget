@@ -5,6 +5,7 @@ mod error;
 use std::sync::Arc;
 
 use argh::FromArgs;
+use colored::*;
 use reqwest::ClientBuilder;
 use tokio::task::JoinHandle;
 
@@ -39,6 +40,11 @@ async fn main() {
     let ctx = Context::new(client, &args.output, &args.links).unwrap();
     let ctx = Arc::new(ctx);
 
+    if !ctx.output_directory.exists() && std::fs::create_dir_all(&ctx.output_directory).is_err() {
+        eprintln!("Unable to create output directory");
+        return;
+    }
+
     let tasks: Vec<JoinHandle<()>> = std::iter::repeat_with(|| {
         let ctx = ctx.clone();
         tokio::spawn(async move {
@@ -49,11 +55,15 @@ async fn main() {
                     None => return,
                 };
 
-                match download::download(&ctx, link, &path).await {
+                match download::download(&ctx, &link, &path).await {
                     Ok(_) => {}
                     Err(e) => {
-                        tokio::fs::remove_file(path).await.unwrap();
-                        dbg!(e);
+                        std::fs::remove_file(path).unwrap();
+                        println!(
+                            "Error downloading {}:\n{}",
+                            link.to_string().green(),
+                            e.to_string().red()
+                        );
                     }
                 }
             }
