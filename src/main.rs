@@ -5,8 +5,9 @@ mod error;
 use std::sync::Arc;
 
 use argh::FromArgs;
-use context::Context;
-use tokio::{sync::Mutex, task::JoinHandle};
+use tokio::task::JoinHandle;
+
+use crate::context::Context;
 
 #[derive(Debug, FromArgs)]
 /// Downloading things in parallel.
@@ -26,14 +27,14 @@ struct Pget {
 async fn main() {
     let args = argh::from_env::<Pget>();
     let ctx = Context::new(&args.output, &args.links).unwrap();
-    let ctx = Arc::new(Mutex::new(ctx));
+    let ctx = Arc::new(ctx);
 
     let tasks: Vec<JoinHandle<()>> = std::iter::repeat_with(|| {
         let ctx = ctx.clone();
         tokio::spawn(async move {
             loop {
                 // Temporarily block to try to get a link or return if we downloaded everything.
-                let (path, link) = match { ctx.lock().await.next() } {
+                let (path, link) = match { ctx.next().await } {
                     Some(pair) => pair,
                     None => return,
                 };

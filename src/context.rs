@@ -2,16 +2,15 @@ use std::{
     collections::HashMap,
     io::Read,
     path::{Path, PathBuf},
+    sync::Arc,
 };
 
 use reqwest::Url;
+use tokio::sync::Mutex;
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct Context {
-    links: Vec<Url>,
-    /// By default, like wget, we name the files the rest of the url after the final slash but this
-    /// create collisions so we keep track of the names and append the file's count to stop that.
-    file_name_count_map: HashMap<String, usize>,
+    link_store: Arc<Mutex<LinkStore>>,
     /// The directory where all files are stored.
     pub output_directory: PathBuf,
 }
@@ -22,6 +21,36 @@ impl Context {
         output_directory: &Option<String>,
         links_file: &Option<String>,
     ) -> std::io::Result<Self> {
+        let link_store = LinkStore::new(links_file)?;
+        Ok(Self {
+            link_store: Arc::new(Mutex::new(link_store)),
+            output_directory: output_directory
+                .as_ref()
+                .map(|v| Path::new(&v).into())
+                .unwrap_or_else(|| Path::new("./").into()),
+        })
+    }
+
+    pub async fn next(&self) -> Option<(PathBuf, Url)> {
+        let mut store = self.link_store.lock().await;
+        store.links.pop().map(|url| {
+            let name = store.choose_name(&url);
+            let output_path = self.output_directory.join(name);
+            (output_path, url)
+        })
+    }
+}
+
+#[derive(Debug, Default)]
+pub struct LinkStore {
+    links: Vec<Url>,
+    /// By default, like wget, we name the files the rest of the url after the final slash but this
+    /// create collisions so we keep track of the names and append the file's count to stop that.
+    file_name_count_map: HashMap<String, usize>,
+}
+
+impl LinkStore {
+    pub fn new(links_file: &Option<String>) -> std::io::Result<Self> {
         let mut links = Vec::new();
         links_file
             .as_ref()
@@ -39,21 +68,8 @@ impl Context {
 
         Ok(Self {
             links,
-            output_directory: output_directory
-                .as_ref()
-                .map(|v| Path::new(&v).into())
-                .unwrap_or_else(|| Path::new("./").into()),
             file_name_count_map: HashMap::default(),
         })
-    }
-
-    pub fn next(&mut self) -> Option<(PathBuf, Url)> {
-        self.links.pop()
-            .map(|url| {
-                let name = self.choose_name(&url);
-                let output_path = self.output_directory.join(name);
-                (output_path, url)
-            })
     }
 
     fn choose_name(&mut self, link: &Url) -> String {
@@ -81,31 +97,22 @@ impl Context {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::{collections::HashMap, path::Path};
 
     #[test]
     fn multiple_with_extensions() {
         let url = Url::parse("https://example.com/test.png").unwrap();
-        let mut ctx = Context {
-            links: Vec::new(),
-            file_name_count_map: HashMap::default(),
-            output_directory: Path::new("./").into(),
-        };
+        let mut store = LinkStore::default();
 
-        assert_eq!(ctx.choose_name(&url), "test.png");
-        assert_eq!(ctx.choose_name(&url), "test.png.1");
+        assert_eq!(store.choose_name(&url), "test.png");
+        assert_eq!(store.choose_name(&url), "test.png.1");
     }
 
     #[test]
     fn multiple_without_extensions() {
         let url = Url::parse("https://example.com/").unwrap();
-        let mut ctx = Context {
-            links: Vec::new(),
-            file_name_count_map: HashMap::default(),
-            output_directory: Path::new("./").into(),
-        };
+        let mut store = LinkStore::default();
 
-        assert_eq!(ctx.choose_name(&url), "index.html");
-        assert_eq!(ctx.choose_name(&url), "index.html.1");
+        assert_eq!(store.choose_name(&url), "index.html");
+        assert_eq!(store.choose_name(&url), "index.html.1");
     }
 }
