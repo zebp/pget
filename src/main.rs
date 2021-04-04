@@ -1,6 +1,11 @@
-use std::io::Read;
+mod download;
+mod context;
+
+use std::sync::Arc;
 
 use argh::FromArgs;
+use context::Context;
+use tokio::{sync::Mutex, task::JoinHandle};
 
 #[derive(Debug, FromArgs)]
 /// Downloading things in parallel.
@@ -8,6 +13,9 @@ struct Pget {
     /// how many links should be downloaded in parallel.
     #[argh(option, default = "8", short = 't')]
     tasks: u16,
+    /// how many links should be downloaded in parallel.
+    #[argh(option, short = 'o')]
+    output: Option<String>,
     #[argh(positional)]
     /// a list of all of the links to download.
     links: Option<String>,
@@ -16,19 +24,30 @@ struct Pget {
 #[tokio::main]
 async fn main() {
     let args = argh::from_env::<Pget>();
-    let links = collect_links(&args.links).unwrap();
-    dbg!(links, args);
-}
+    let ctx = Context::new(&args.output, &args.links).unwrap();
+    let ctx = Arc::new(Mutex::new(ctx));
 
-/// Reads all the links from either the provided file or from stdin.
-fn collect_links(links_file: &Option<String>) -> std::io::Result<Vec<String>> {
-    links_file
-        .as_ref()
-        .map(std::fs::read_to_string)
-        .unwrap_or_else(|| {
-            let mut buf = String::new();
-            std::io::stdin().read_to_string(&mut buf)?;
-            Ok(buf)
+    let tasks: Vec<JoinHandle<()>> = std::iter::repeat_with(|| {
+        let ctx = ctx.clone();
+        tokio::spawn(async move {
+            loop {
+                // Temporarily block to try to get a link or return if we downloaded everything.
+                let (name, link) = match { ctx.lock().await.next() } {
+                    Some(pair) => pair,
+                    None => return,
+                };
+
+                match download::download(link, name).await {
+                    Ok(_) => {},
+                    Err(e) => {
+                        dbg!(e);
+                    }
+                }
+            }
         })
-        .map(|input| input.lines().map(String::from).collect())
+    })
+    .take(args.tasks as usize)
+    .collect();
+
+    futures::future::join_all(tasks).await;
 }
