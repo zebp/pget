@@ -1,0 +1,15 @@
+[package]
+name = "pget"
+version = "0.1.0"
+authors = ["Zeb Piasecki <zeb@zebulon.dev>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+argh = "0.1.4"
+reqwest = "0.11.2"
+tokio = { version = "1.4.0", features = ["rt", "macros", "rt-multi-thread"] }
+
+[dev-dependencies.cargo-husky]
+version = "1"
